@@ -1,0 +1,37 @@
+#!/bin/bash
+# This script will add iptables rules to allow VNC connections only from this PTK.
+
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+PTK_SUBNET=$(hostname -i | awk -F "." '{print $3}')
+
+IMTS_NET="172.26.$PTK_SUBNET.0/24"
+LOCAL_NET="192.168.$PTK_SUBNET.0/24"
+#echo "IMTS - $IMTS_NET"
+#echo "LOCAL - $LOCAL_NET"
+
+# Check whether the iptables rules already exist (-C option doesn't work with this rule for some reason)
+sudo iptables -nvL | grep 5900 > /dev/null
+# Append rules if they don't exist
+if [ $? -ne 0 ]
+  then
+    sudo iptables -A INPUT -s $IMTS_NET -p tcp --match multiport --dports 5900:6000 -j ACCEPT
+    sudo iptables -A INPUT -s $LOCAL_NET -p tcp --match multiport --dports 5900:6000 -j ACCEPT
+    sudo iptables -A INPUT -s 0.0.0.0/0 -p tcp --match multiport --dports 5900:6000 -j DROP
+    logger "iptables: Rules for VNC were added"
+  else
+    logger "iptables: Nothing to do"
+fi
+
+# Check if iptables-persistent package is installed
+sudo dpkg --get-selections | grep iptables-persistent > /dev/null
+if [ $? -ne 0 ]
+  then
+    echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
+    echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
+
+    sudo apt-get -y install iptables-persistent
+    logger "iptables-persistent was installed"
+  else
+    logger "iptables-persistent is already installed"
+fi
